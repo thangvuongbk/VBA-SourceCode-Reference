@@ -1,4 +1,3 @@
-Attribute VB_Name = "MMain"
 Option Explicit
 Const OK = 1
 Const WARNING = 0
@@ -11,6 +10,13 @@ Const THIRD_PATH = "3rd\pdftk.exe"
 Const OUTPUT_FOLDER = "Protected_Payslip\"
 Const START_EMP_COUNT = 12
 Const START_EMP_SENDMAIL = 2
+' Type define
+Type OutputReport
+    noTotalRow As Integer
+    noValidExported As Integer
+    noValidNotExported As Integer
+    noOther As Integer
+End Type
 
 Sub ExportToPDFOne()
     '***********************************************************
@@ -92,7 +98,6 @@ Sub ExportToPDFOne()
         'm_inPDFFileName = """" & m_inPDFFileName & """"
         'm_outPDFFileName = """" & m_outPDFFileName & """"
         'm_pwd = """" & m_pwd & """"
-        
     
         cmdStrGenPDF = m_pdfGenToolPath & " " & m_inPDFFileName _
                                                                     & " Output " & m_outPDFFileName _
@@ -101,7 +106,7 @@ Sub ExportToPDFOne()
         
         Shell cmdStrGenPDF, vbHide
         
-        Application.Wait DateAdd("s", 2, Now)
+        Application.Wait DateAdd("s", 5, Now)
         
         Kill Replace(m_inPDFFileName, """", "")
         
@@ -110,13 +115,15 @@ Sub ExportToPDFOne()
         
         Application.StatusBar = "Protected Salary Slip Generated."
         DoEvents
-        MsgBox ("The current payslip has been created at: " & vbNewLine & m_currentPath & OUTPUT_FOLDER)
+        If MsgBox("The current payslip has been created at: " & vbNewLine & m_currentPath & OUTPUT_FOLDER & vbNewLine & vbNewLine & "Do you want to open?", vbYesNo, "Confirm") = vbYes Then
+            Shell "explorer.exe" & " " & m_currentPath & OUTPUT_FOLDER, vbNormalFocus
+        End If
     End If ' for message confirmation
     
 ErrHandler:
    If Err.Number <> 0 Then MsgBox Err.Description, vbCritical
 End Sub
-
+    
 Sub ExportToPDFAll()
     '***********************************************************
     '
@@ -138,11 +145,13 @@ Sub ExportToPDFAll()
     Dim m_pdfGenToolPath As String
     Dim cmdStrGenPDF As String
     Dim m_empIndex As Integer
+    Dim m_listValidNotExported() As Integer
+
+    Dim m_outputReport As OutputReport
     
     If MsgBox("You are going to generate ALL the Payslips, Are you sure?", vbYesNo, "Confirm") = vbYes Then
-    On Error GoTo ErrHandler
+    'On Error GoTo ErrHandler
     Application.StatusBar = "Generating Payslip for all Employees, Please Wait ..."
-    'Application.StatusBar = "Generating a Payslip, Please Wait ..."
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
 
@@ -152,32 +161,49 @@ Sub ExportToPDFAll()
     ' Loop to end of the employees need to be generated pdf file
     ' m_empIndex should run from row number = 12
     For m_empIndex = START_EMP_COUNT To Sheets(PAYROLL_SHEET).Cells(Rows.Count, "C").End(xlUp).Row
+        m_outputReport.noTotalRow = Sheets(PAYROLL_SHEET).Cells(Rows.Count, "C").End(xlUp).Row - START_EMP_COUNT + 1
+        Application.StatusBar = "Progress: " & (m_empIndex - START_EMP_COUNT + 1) & "/" & (Sheets(PAYROLL_SHEET).Cells(Rows.Count, "C").End(xlUp).Row - START_EMP_COUNT + 1) & ", Please Wait ..."
+        ' in case the value is not numeric
+        If Not IsNumeric(Sheets(PAYROLL_SHEET).Range("C" & m_empIndex).Value2) Then
+                'MsgBox "ERROR! ExportToPDFAll! Employee Code at Cell C7 of sheet Payslip is empty, Please check and update"
+                m_outputReport.noOther = m_outputReport.noOther + 1
+                GoTo MoveToNextEmployee
+        End If
+        
         Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C" & m_empIndex).Value2
-         
         m_empCode = Sheets(PAYSLIP_SHEET).Range("C7").Value2 ' Getting the employee code at Cell "C7" in current sheet Payslip"/Need to take care this point, this may be change in the future
         If (m_empCode = "") Then
-                MsgBox "ERROR! ExportToPDFAll! Employee Code at Cell C7 of sheet Payslip is empty, Please check and update"
+                'MsgBox "ERROR! ExportToPDFAll! Employee Code at Cell C7 of sheet Payslip is empty, Please check and update"
                 GoTo MoveToNextEmployee
         End If
          
          m_empRowNum = Application.Match(m_empCode, Sheets(MAILER_SHEET).Columns("C"), 0)
          If IsError(m_empRowNum) Then
-             MsgBox "ERROR! ExportToPDFAll! Not able to find the " & m_empCode & " at column C of sheet " & MAILER_SHEET
+             'MsgBox "ERROR! ExportToPDFAll! Can not to find the " & m_empCode & " at column C of sheet " & MAILER_SHEET
+             m_outputReport.noValidNotExported = m_outputReport.noValidNotExported + 1
+             Sheets(PAYROLL_SHEET).Range("C" & m_empIndex).Font.Color = vbRed
              GoTo MoveToNextEmployee
          End If
          
          m_inPDFFileName = m_currentPath & Sheets(MAILER_SHEET).Range("K" & m_empRowNum).Value2 & ".pdf"       ' set the filename of input file path
          If (m_inPDFFileName = Empty) Then
-             MsgBox "ERROR! ExportToPDFAll! The FILENAME is EMPTY for staff code  " & m_empCode & " at sheet " & MAILER_SHEET & " and Cell " & "K" & m_empRowNum
+             'MsgBox "ERROR! ExportToPDFAll! The FILENAME is EMPTY for staff code  " & m_empCode & " at sheet " & MAILER_SHEET & " and Cell " & "K" & m_empRowNum
+             m_outputReport.noValidNotExported = m_outputReport.noValidNotExported + 1
+             Sheets(PAYROLL_SHEET).Range("C" & m_empIndex).Font.Color = vbRed
+             Sheets(MAILER_SHEET).Range("K" & m_empRowNum).Font.Color = vbRed
              GoTo MoveToNextEmployee
          End If
          
          m_pwd = Sheets(MAILER_SHEET).Range("J" & m_empRowNum).Value2
          If (m_pwd = Empty) Then
-             MsgBox "ERROR! ExportToPDFAll! The PASSWORD is EMPTY for staff code  " & m_empCode & " at sheet " & MAILER_SHEET & " and Cell " & "K" & m_empRowNum
+             'MsgBox "ERROR! ExportToPDFAll! The PASSWORD is EMPTY for staff code  " & m_empCode & " at sheet " & MAILER_SHEET & " and Cell " & "K" & m_empRowNum
+             m_outputReport.noValidNotExported = m_outputReport.noValidNotExported + 1
+             Sheets(PAYROLL_SHEET).Range("C" & m_empIndex).Font.Color = vbRed
+             Sheets(MAILER_SHEET).Range("J" & m_empRowNum).Font.Color = vbRed
              GoTo MoveToNextEmployee
          End If
          
+         '$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
          ' Generate the pdf file
          Worksheets(PAYSLIP_SHEET).Activate
          With ActiveSheet
@@ -192,15 +218,12 @@ Sub ExportToPDFAll()
          createADirectory (m_outPDFFileName)
         
          If Len(Dir(m_inPDFFileName)) = 0 Then
-             MsgBox "ERROR! ExportToPDFAll! " & m_inPDFFileName & " File does not exist"
+             'MsgBox "ERROR! ExportToPDFAll! " & m_inPDFFileName & " File does not exist"
              GoTo MoveToNextEmployee
          End If
          
          m_pdfGenToolPath = m_currentPath & THIRD_PATH
          m_outPDFFileName = m_outPDFFileName & Sheets(MAILER_SHEET).Range("K" & m_empRowNum).Value2 & ".pdf"
-         'm_inPDFFileName = """" & m_inPDFFileName & """"
-         'm_outPDFFileName = """" & m_outPDFFileName & """"
-         'm_pwd = """" & m_pwd & """"
          
          cmdStrGenPDF = m_pdfGenToolPath & " " & m_inPDFFileName _
                                          & " Output " & m_outPDFFileName _
@@ -209,12 +232,13 @@ Sub ExportToPDFAll()
          
          Shell cmdStrGenPDF, vbHide
          
-         Application.Wait DateAdd("s", 2, Now)
+         Application.Wait DateAdd("s", 5, Now)
          
          Kill Replace(m_inPDFFileName, """", "")
          
-ErrHandler:
-   If Err.Number <> 0 Then MsgBox Err.Description, vbCritical
+         m_outputReport.noValidExported = m_outputReport.noValidExported + 1
+'ErrHandler:
+'   If Err.Number <> 0 Then MsgBox Err.Description, vbCritical
 MoveToNextEmployee:
     Next m_empIndex
     
@@ -223,8 +247,14 @@ MoveToNextEmployee:
     
     Application.StatusBar = "Protected Salary Slip Generated."
     DoEvents
-    MsgBox ("All Protected Salary Slip Generated at: " & vbNewLine & m_currentPath & OUTPUT_FOLDER)
-    
+    If MsgBox("Report the result:" & vbNewLine & _
+                    "1. Total number: " & m_outputReport.noTotalRow & vbNewLine & _
+                    "2. No. valid emp are exported: " & m_outputReport.noValidExported & vbNewLine & _
+                    "3. No. valid emp are not exported: " & m_outputReport.noValidNotExported & "!!!,  if this value is not 0, please check the red value at column 'C' in sheet" & PAYROLL_SHEET & vbNewLine & _
+                    "4. No. others (not right staff code format): " & m_outputReport.noOther & vbNewLine & vbNewLine & _
+                    "All Protected Salary Slip Generated at: " & vbNewLine & m_currentPath & OUTPUT_FOLDER & vbNewLine & vbNewLine & "Do you want to open?", vbYesNo, "Confirm") = vbYes Then
+                    Shell "explorer.exe" & " " & m_currentPath & OUTPUT_FOLDER, vbNormalFocus
+    End If
    End If
 End Sub
 
@@ -263,7 +293,11 @@ Sub NextEmployee()
         Exit Sub
     End If
     ' update to the next one
-    Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C" & m_empRowNum + 1).Value2
+    If Not IsNumeric(Sheets(PAYROLL_SHEET).Range("C" & m_empRowNum + 1).Value2) Then
+        Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C" & m_empRowNum + 2).Value2
+    Else
+        Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C" & m_empRowNum + 1).Value2
+    End If
             
 End Sub
 
@@ -283,7 +317,7 @@ Sub PreviousEmployee()
     m_empRowNum = START_EMP_COUNT + 1
     
     If (Sheets(PAYSLIP_SHEET).Range("C7").Value2 = Empty) Then
-        MsgBox "ERROR! NextEmployee! Value at C7 of " & PAYSLIP_SHEET & " should not be empty. Automatic get the first employee"
+        MsgBox "ERROR! PreviousEmployee! Value at C7 of " & PAYSLIP_SHEET & " should not be empty. Automatic get the first employee"
         Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C12").Value2
         Exit Sub
     End If
@@ -292,24 +326,23 @@ Sub PreviousEmployee()
     m_empRowNum = Application.Match(m_empCode, Sheets(PAYROLL_SHEET).Columns("C"), 0)
     
     If m_empRowNum = START_EMP_COUNT Then
-        MsgBox "INFO! NextEmployee! This is the FIRST of Employee" & vbNewLine & "Move to the last employee"
-        Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C" & Sheets(PAYROLL_SHEET).Cells(Rows.Count, "C").End(xlUp).Row - 1).Value2
+        MsgBox "INFO! PreviousEmployee! This is the FIRST of Employee" & vbNewLine & "Move to the last employee"
+        Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C" & Sheets(PAYROLL_SHEET).Cells(Rows.Count, "C").End(xlUp).Row).Value2
         Exit Sub
     End If
-    
-    If m_empRowNum = Sheets(PAYROLL_SHEET).Cells(Rows.Count, "C").End(xlUp).Row Then
-        MsgBox "INFO! NextEmployee! End of Employee" & vbNewLine & "Back to the first employee"
-        Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C12").Value2
-        Exit Sub
-    End If
-    
+        
     If IsError(m_empRowNum) Then
-        MsgBox "ERROR! NextEmployee! Not able to find the " & m_empCode & " at column C of sheet " & MAILER_SHEET & vbNewLine & "Back to the first employee"
+        MsgBox "ERROR! PreviousEmployee! Not able to find the " & m_empCode & " at column C of sheet " & MAILER_SHEET & vbNewLine & "Back to the first employee"
         Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C12").Value2
         Exit Sub
     End If
     ' update to the next one
-    Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C" & m_empRowNum - 1).Value2
+       If Not IsNumeric(Sheets(PAYROLL_SHEET).Range("C" & m_empRowNum - 1).Value2) Then
+        Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C" & m_empRowNum - 2).Value2
+    Else
+        Sheets(PAYSLIP_SHEET).Range("C7") = Sheets(PAYROLL_SHEET).Range("C" & m_empRowNum - 1).Value2
+    End If
+        
 End Sub
 
 Sub SendMailToAll()
@@ -419,6 +452,7 @@ MoveToSendNext:
 ErrHandler:
        If Err.Number <> 0 Then MsgBox Err.Description, vbCritical
     End If  ' Message confirmation
+    MsgBox "Send mail to all employees is done. Please check the status!!!"
 End Sub
 
 Function createADirectory(ByVal path As String)

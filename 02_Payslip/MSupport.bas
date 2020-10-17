@@ -1,4 +1,3 @@
-Attribute VB_Name = "MSupport"
 Option Explicit
 Const OK = 1
 Const ERROR = -1
@@ -54,5 +53,12 @@ Function ReplaceAll(ByVal inString As Variant, _
     ReplaceAll = result
 End Function
 
+' Remove space at naming
+Function RemoveSpaceName(ByVal inString As Variant)
+    Dim pattern() As String
+    Dim convertString As String
+    pattern = Split(" | ", "|")
+    RemoveSpaceName = ReplaceAll(inString, pattern(), "")
+End Function
 
 
